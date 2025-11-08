@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// WAL (Write-Ahead Log) entry types
+enum WALEntryType {
+    WAL_ENTRY_UNKNOWN = 0;
+    WAL_ENTRY_SET = 1;
+    WAL_ENTRY_DELETE = 2;
+    WAL_ENTRY_CAS = 3;
+}
+
+// WAL entry message
+message WALEntry {
+    WALEntryType type = 1;
+    int64 sequence_number = 2;
+    int64 timestamp_ms = 3;
+    string key = 4;
+    bytes value = 5;
+    int64 version = 6;
+    optional int32 ttl_seconds = 7;
+    optional int64 expected_version = 8;  // For CAS operations
+}
+
+// WAL file header
+message WALHeader {
+    string wal_id = 1;
+    int64 created_at_ms = 2;
+    string node_id = 3;
+    int32 wal_version = 4;  // Format version
+}

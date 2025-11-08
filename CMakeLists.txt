@@ -166,6 +166,18 @@ if(SECURITY_SOURCES)
     )
 endif()
 
+# Persistence library (WAL, snapshots, recovery)
+file(GLOB_RECURSE PERSISTENCE_SOURCES "src/persistence/*.cpp")
+if(PERSISTENCE_SOURCES)
+    add_library(distcache_persistence STATIC ${PERSISTENCE_SOURCES})
+    target_link_libraries(distcache_persistence
+        PUBLIC
+        distcache_core
+        distcache_proto
+        distcache_cluster
+    )
+endif()
+
 # Cache server executable
 add_executable(distcache_server src/main.cpp)
 target_link_libraries(distcache_server
@@ -183,6 +195,9 @@ if(TARGET distcache_replication)
 endif()
 if(TARGET distcache_security)
     target_link_libraries(distcache_server PRIVATE distcache_security)
+endif()
+if(TARGET distcache_persistence)
+    target_link_libraries(distcache_server PRIVATE distcache_persistence)
 endif()
 
 # Coordinator server executable

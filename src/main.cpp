@@ -10,6 +10,8 @@
 #include "distcache/tls_config.h"
 #include "distcache/auth_manager.h"
 #include "distcache/auth_token.h"
+#include "distcache/validator.h"
+#include "distcache/rate_limiter.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -29,8 +31,10 @@ using distcache::v1::GetMetricsResponse;
 using distcache::v1::CompareAndSwapRequest;
 using distcache::v1::CompareAndSwapResponse;
 
-// Global auth manager (initialized in main)
+// Global security components (initialized in main)
 std::shared_ptr<distcache::AuthManager> g_auth_manager = nullptr;
+std::shared_ptr<distcache::Validator> g_validator = nullptr;
+std::shared_ptr<distcache::RateLimiter> g_rate_limiter = nullptr;
 bool g_require_auth = false;
 
 namespace distcache {
@@ -41,9 +45,17 @@ public:
 
     Status Get(ServerContext* context, const GetRequest* request,
                GetResponse* response) override {
+        // Check rate limiting
+        CHECK_RATE_LIMIT(context, g_rate_limiter.get());
+
         // Check authentication if required
         if (g_require_auth) {
             REQUIRE_AUTH(context, *g_auth_manager, distcache::Operation::READ);
+        }
+
+        // Validate input
+        if (g_validator) {
+            VALIDATE_OR_RETURN(*g_validator, g_validator->validate_key(request->key()), "GET");
         }
 
         LOG_DEBUG("GET key={}", request->key());
@@ -65,6 +77,9 @@ public:
 
     Status Set(ServerContext* context, const SetRequest* request,
                SetResponse* response) override {
+        // Check rate limiting
+        CHECK_RATE_LIMIT(context, g_rate_limiter.get());
+
         // Check authentication if required
         if (g_require_auth) {
             REQUIRE_AUTH(context, *g_auth_manager, distcache::Operation::WRITE);
@@ -75,6 +90,13 @@ public:
         std::optional<int32_t> ttl;
         if (request->has_ttl_seconds()) {
             ttl = request->ttl_seconds();
+        }
+
+        // Validate input
+        if (g_validator) {
+            VALIDATE_OR_RETURN(*g_validator,
+                             g_validator->validate_set_operation(request->key(), value, ttl),
+                             "SET");
         }
 
         LOG_DEBUG("SET key={} size={} ttl={}", request->key(), value.size(),
@@ -95,9 +117,17 @@ public:
 
     Status Delete(ServerContext* context, const DeleteRequest* request,
                   DeleteResponse* response) override {
+        // Check rate limiting
+        CHECK_RATE_LIMIT(context, g_rate_limiter.get());
+
         // Check authentication if required
         if (g_require_auth) {
             REQUIRE_AUTH(context, *g_auth_manager, distcache::Operation::WRITE);
+        }
+
+        // Validate input
+        if (g_validator) {
+            VALIDATE_OR_RETURN(*g_validator, g_validator->validate_key(request->key()), "DELETE");
         }
 
         LOG_DEBUG("DELETE key={}", request->key());
@@ -121,6 +151,9 @@ public:
 
     Status GetMetrics(ServerContext* context, const GetMetricsRequest* request,
                      GetMetricsResponse* response) override {
+        // Check rate limiting
+        CHECK_RATE_LIMIT(context, g_rate_limiter.get());
+
         // Check authentication if required
         if (g_require_auth) {
             REQUIRE_AUTH(context, *g_auth_manager, distcache::Operation::METRICS);
@@ -151,6 +184,9 @@ public:
     Status CompareAndSwap(ServerContext* context,
                          const CompareAndSwapRequest* request,
                          CompareAndSwapResponse* response) override {
+        // Check rate limiting
+        CHECK_RATE_LIMIT(context, g_rate_limiter.get());
+
         // Check authentication if required
         if (g_require_auth) {
             REQUIRE_AUTH(context, *g_auth_manager, distcache::Operation::WRITE);
@@ -158,8 +194,6 @@ public:
 
         const std::string& key = request->key();
         int64_t expected_version = request->expected_version();
-
-        LOG_DEBUG("CAS key={} expected_version={}", key, expected_version);
 
         // Convert protobuf value to vector
         std::vector<uint8_t> new_value(request->new_value().begin(),
@@ -169,6 +203,15 @@ public:
         if (request->has_ttl_seconds()) {
             ttl = request->ttl_seconds();
         }
+
+        // Validate input
+        if (g_validator) {
+            VALIDATE_OR_RETURN(*g_validator,
+                             g_validator->validate_set_operation(key, new_value, ttl),
+                             "CAS");
+        }
+
+        LOG_DEBUG("CAS key={} expected_version={}", key, expected_version);
 
         // Create new entry
         CacheEntry new_entry(key, std::move(new_value), ttl);
@@ -238,6 +281,8 @@ int main(int argc, char** argv) {
     bool use_tls = false;
     bool enable_auth = false;
     std::string auth_secret = "distcache_test_secret_change_me_in_production";
+    bool enable_validation = false;
+    bool enable_rate_limiting = false;
 
     // Parse simple command line args
     for (int i = 1; i < argc; i++) {
@@ -259,16 +304,22 @@ int main(int argc, char** argv) {
         } else if (arg == "--auth-secret" && i + 1 < argc) {
             auth_secret = argv[++i];
             enable_auth = true;
+        } else if (arg == "--enable-validation") {
+            enable_validation = true;
+        } else if (arg == "--enable-rate-limiting") {
+            enable_rate_limiting = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [options]\n"
                       << "Options:\n"
-                      << "  --log-level LEVEL    Set log level (trace, debug, info, warn, error)\n"
-                      << "  --log-file PATH      Log to file instead of stdout\n"
-                      << "  --use-tls            Enable TLS (uses config/tls.conf by default)\n"
-                      << "  --tls-config PATH    Path to TLS configuration file\n"
-                      << "  --enable-auth        Enable authentication\n"
-                      << "  --auth-secret SEC    Authentication secret (default: test secret)\n"
-                      << "  --help, -h           Show this help message\n";
+                      << "  --log-level LEVEL       Set log level (trace, debug, info, warn, error)\n"
+                      << "  --log-file PATH         Log to file instead of stdout\n"
+                      << "  --use-tls               Enable TLS (uses config/tls.conf by default)\n"
+                      << "  --tls-config PATH       Path to TLS configuration file\n"
+                      << "  --enable-auth           Enable authentication\n"
+                      << "  --auth-secret SEC       Authentication secret (default: test secret)\n"
+                      << "  --enable-validation     Enable input validation\n"
+                      << "  --enable-rate-limiting  Enable rate limiting\n"
+                      << "  --help, -h              Show this help message\n";
             return 0;
         }
     }
@@ -312,6 +363,33 @@ int main(int argc, char** argv) {
         LOG_INFO("Authentication enabled");
     } else {
         LOG_WARN("Authentication disabled - all requests allowed");
+    }
+
+    // Initialize input validation if enabled
+    if (enable_validation) {
+        distcache::Validator::Config validator_config;
+        validator_config.max_key_length = 256;
+        validator_config.max_value_size = 1024 * 1024;  // 1MB
+        validator_config.max_ttl_seconds = 30 * 24 * 3600;  // 30 days
+
+        g_validator = std::make_shared<distcache::Validator>(validator_config);
+        LOG_INFO("Input validation enabled (max_key=256B, max_value=1MB, max_ttl=30d)");
+    } else {
+        LOG_WARN("Input validation disabled");
+    }
+
+    // Initialize rate limiting if enabled
+    if (enable_rate_limiting) {
+        distcache::RateLimiter::Config limiter_config;
+        limiter_config.client_capacity = 100;      // 100 requests burst
+        limiter_config.client_refill_rate = 10.0;  // 10 req/s per client
+        limiter_config.global_capacity = 10000;    // 10000 requests burst
+        limiter_config.global_refill_rate = 1000.0; // 1000 req/s globally
+
+        g_rate_limiter = std::make_shared<distcache::RateLimiter>(limiter_config);
+        LOG_INFO("Rate limiting enabled (per-client: 10 req/s, global: 1000 req/s)");
+    } else {
+        LOG_WARN("Rate limiting disabled");
     }
 
     RunServer(tls_config);
