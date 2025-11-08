@@ -1,0 +1,148 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: distcache
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: coordinator-storage
+  namespace: distcache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coordinator-config
+  namespace: distcache
+data:
+  HEARTBEAT_TIMEOUT: "5000"
+  REPLICATION_FACTOR: "3"
+  VIRTUAL_NODES: "150"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coordinator
+  namespace: distcache
+  labels:
+    app: coordinator
+    component: coordinator
+spec:
+  replicas: 1  # Single coordinator instance
+  strategy:
+    type: Recreate  # Ensure only one instance runs at a time
+  selector:
+    matchLabels:
+      app: coordinator
+  template:
+    metadata:
+      labels:
+        app: coordinator
+        component: coordinator
+    spec:
+      containers:
+      - name: coordinator
+        image: distcache/coordinator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: grpc
+          containerPort: 50100
+          protocol: TCP
+        env:
+        - name: HEARTBEAT_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: coordinator-config
+              key: HEARTBEAT_TIMEOUT
+        - name: REPLICATION_FACTOR
+          valueFrom:
+            configMapKeyRef:
+              name: coordinator-config
+              key: REPLICATION_FACTOR
+        - name: VIRTUAL_NODES
+          valueFrom:
+            configMapKeyRef:
+              name: coordinator-config
+              key: VIRTUAL_NODES
+        args:
+        - --port=50100
+        - --storage=/data/coordinator_data.json
+        - --heartbeat-timeout=$(HEARTBEAT_TIMEOUT)
+        - --replication-factor=$(REPLICATION_FACTOR)
+        - --virtual-nodes=$(VIRTUAL_NODES)
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 50100
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 50100
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: coordinator-storage
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coordinator
+  namespace: distcache
+  labels:
+    app: coordinator
+spec:
+  type: ClusterIP
+  ports:
+  - name: grpc
+    port: 50100
+    targetPort: 50100
+    protocol: TCP
+  selector:
+    app: coordinator
+
+---
+# Optional: Headless service for direct pod access
+apiVersion: v1
+kind: Service
+metadata:
+  name: coordinator-headless
+  namespace: distcache
+  labels:
+    app: coordinator
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: grpc
+    port: 50100
+    targetPort: 50100
+    protocol: TCP
+  selector:
+    app: coordinator

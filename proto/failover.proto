@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// Failover service for automatic failure recovery
+service FailoverService {
+  // Initiate failover for a failed node
+  rpc InitiateFailover(FailoverRequest) returns (FailoverResponse);
+
+  // Request catchup sync for a rejoining node
+  rpc RequestCatchup(CatchupRequest) returns (stream CatchupEntry);
+
+  // Report failover status
+  rpc GetFailoverStatus(FailoverStatusRequest) returns (FailoverStatusResponse);
+}
+
+// Failover request
+message FailoverRequest {
+  string failed_node_id = 1;
+  string new_primary_id = 2;
+  repeated string affected_keys = 3;
+}
+
+// Failover response
+message FailoverResponse {
+  bool success = 1;
+  string failover_id = 2;
+  string error = 3;
+  int64 keys_affected = 4;
+  int64 promoted_replica_count = 5;
+}
+
+// Catchup request for replica rejoining
+message CatchupRequest {
+  string node_id = 1;
+  int64 last_known_timestamp = 2;
+  repeated string keys_owned = 3;
+}
+
+// Catchup entry streamed to rejoining node
+message CatchupEntry {
+  string key = 1;
+  bytes value = 2;
+  int32 ttl_seconds = 3;
+  int64 version = 4;
+  int64 timestamp = 5;
+  bool is_deleted = 6;
+}
+
+// Failover status request
+message FailoverStatusRequest {
+  optional string failover_id = 1;  // If empty, return all active failovers
+}
+
+// Failover status response
+message FailoverStatusResponse {
+  message FailoverInfo {
+    string failover_id = 1;
+    string failed_node_id = 2;
+    string new_primary_id = 3;
+    int64 started_at = 4;
+    int64 completed_at = 5;
+    bool in_progress = 6;
+    int64 keys_migrated = 7;
+    string status = 8;  // "initiated", "promoting", "complete", "failed"
+  }
+  repeated FailoverInfo failovers = 1;
+}
+
+// Snapshot metadata for persistence
+message SnapshotMetadata {
+  string snapshot_id = 1;
+  int64 timestamp = 2;
+  int64 num_keys = 3;
+  int64 total_bytes = 4;
+  string node_id = 5;
+  string checksum = 6;
+}
+
+// Snapshot entry
+message SnapshotEntry {
+  string key = 1;
+  bytes value = 2;
+  int32 ttl_seconds = 3;
+  int64 version = 4;
+  int64 created_at = 5;
+  int64 expires_at = 6;
+}
+
+// Snapshot chunk for streaming large snapshots
+message SnapshotChunk {
+  SnapshotMetadata metadata = 1;
+  repeated SnapshotEntry entries = 2;
+  bool is_final = 3;
+  int32 chunk_index = 4;
+}

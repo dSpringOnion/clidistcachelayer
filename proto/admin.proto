@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// Admin service for cluster management
+service AdminService {
+  // Trigger rebalancing after node add/remove
+  rpc Rebalance(RebalanceRequest) returns (RebalanceResponse);
+
+  // Drain a node before shutdown
+  rpc DrainNode(DrainRequest) returns (DrainResponse);
+
+  // Get cluster or node status
+  rpc GetStatus(StatusRequest) returns (StatusResponse);
+
+  // Get metrics (for non-Prometheus clients)
+  rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+}
+
+// Rebalance request
+message RebalanceRequest {
+  optional string new_node_id = 1;
+  optional string removed_node_id = 2;
+}
+
+// Rebalance response
+message RebalanceResponse {
+  bool started = 1;
+  string job_id = 2;
+  string error = 3;
+}
+
+// Drain request
+message DrainRequest {
+  string node_id = 1;
+  int32 timeout_seconds = 2;
+}
+
+// Drain response
+message DrainResponse {
+  bool success = 1;
+  int32 keys_migrated = 2;
+  string error = 3;
+}
+
+// Status request
+message StatusRequest {
+  optional string node_id = 1;  // If empty, return all nodes
+}
+
+// Status response
+message StatusResponse {
+  message NodeStatus {
+    string node_id = 1;
+    string state = 2;  // "healthy", "draining", "failed"
+    string address = 3;
+    int64 memory_used_bytes = 4;
+    int64 memory_limit_bytes = 5;
+    int64 num_keys = 6;
+    double cache_hit_ratio = 7;
+    int64 uptime_seconds = 8;
+    int64 replication_lag_ms = 9;
+  }
+  repeated NodeStatus nodes = 1;
+}
+
+// Metrics request
+message MetricsRequest {
+}
+
+// Metrics response
+message MetricsResponse {
+  message Metric {
+    string name = 1;
+    double value = 2;
+    map<string, string> labels = 3;
+  }
+  repeated Metric metrics = 1;
+}

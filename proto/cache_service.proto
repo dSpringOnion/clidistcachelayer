@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// Main cache service
+service CacheService {
+  // Get a value by key
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Set a key-value pair
+  rpc Set(SetRequest) returns (SetResponse);
+
+  // Delete a key
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // Batch get multiple keys
+  rpc BatchGet(BatchGetRequest) returns (BatchGetResponse);
+
+  // Batch set multiple key-value pairs
+  rpc BatchSet(BatchSetRequest) returns (BatchSetResponse);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Get metrics
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+
+  // Compare-and-swap operation (atomic conditional update)
+  rpc CompareAndSwap(CompareAndSwapRequest) returns (CompareAndSwapResponse);
+}
+
+// Compare-and-swap request
+message CompareAndSwapRequest {
+  string key = 1;
+  int64 expected_version = 2;
+  bytes new_value = 3;
+  optional int32 ttl_seconds = 4;
+  optional int32 write_quorum = 5;
+}
+
+// Compare-and-swap response
+message CompareAndSwapResponse {
+  bool success = 1;
+  int64 new_version = 2;
+  int64 actual_version = 3;  // Current version if CAS failed
+  string error = 4;
+}
+
+// Get request
+message GetRequest {
+  string key = 1;
+  bool read_through = 2;  // Read from primary if true
+  optional int32 read_quorum = 3;  // Number of replicas to read from (for strong consistency)
+}
+
+// Get response
+message GetResponse {
+  bool found = 1;
+  bytes value = 2;
+  int64 version = 3;
+  string error = 4;
+  map<string, int64> version_vector = 5;  // Node ID -> version mapping for causality
+  int64 timestamp_ms = 6;  // Last modified timestamp
+}
+
+// Set request
+message SetRequest {
+  string key = 1;
+  bytes value = 2;
+  optional int32 ttl_seconds = 3;
+  optional int64 expected_version = 4;  // For CAS (compare-and-swap)
+  optional int32 write_quorum = 5;  // Number of replicas that must acknowledge (for durability)
+  map<string, int64> version_vector = 6;  // Optional version vector for conflict detection
+}
+
+// Set response
+message SetResponse {
+  bool success = 1;
+  int64 version = 2;
+  string error = 3;
+  bool version_mismatch = 4;  // True if CAS failed due to version conflict
+  int64 actual_version = 5;  // Actual version if CAS failed
+  int32 replicas_acknowledged = 6;  // Number of replicas that acknowledged (for quorum tracking)
+}
+
+// Delete request
+message DeleteRequest {
+  string key = 1;
+}
+
+// Delete response
+message DeleteResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Batch get request
+message BatchGetRequest {
+  repeated string keys = 1;
+}
+
+// Batch get response
+message BatchGetResponse {
+  message Entry {
+    string key = 1;
+    bool found = 2;
+    bytes value = 3;
+  }
+  repeated Entry entries = 1;
+}
+
+// Batch set request
+message BatchSetRequest {
+  message Entry {
+    string key = 1;
+    bytes value = 2;
+    optional int32 ttl_seconds = 3;
+  }
+  repeated Entry entries = 1;
+}
+
+// Batch set response
+message BatchSetResponse {
+  int32 succeeded = 1;
+  int32 failed = 2;
+}
+
+// Health check request
+message HealthCheckRequest {
+}
+
+// Health check response
+message HealthCheckResponse {
+  enum Status {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  Status status = 1;
+  string message = 2;
+}
+
+// Get metrics request
+message GetMetricsRequest {
+  enum Format {
+    JSON = 0;
+    PROMETHEUS = 1;
+  }
+  Format format = 1;
+}
+
+// Get metrics response
+message GetMetricsResponse {
+  string metrics = 1;  // Metrics in requested format
+  uint64 cache_hits = 2;
+  uint64 cache_misses = 3;
+  double hit_ratio = 4;
+  uint64 sets_total = 5;
+  uint64 deletes_total = 6;
+  uint64 evictions_total = 7;
+  uint64 entries_count = 8;
+  uint64 memory_bytes = 9;
+}

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// Replication service for node-to-node communication
+service ReplicationService {
+  // Replicate a batch of operations to a replica
+  rpc Replicate(ReplicationBatch) returns (ReplicationAck);
+
+  // Request synchronization of specific keys
+  rpc SyncRequest(SyncMetadata) returns (stream KeyValuePair);
+}
+
+// Replication batch
+message ReplicationBatch {
+  string source_node_id = 1;
+  int64 timestamp = 2;
+  repeated ReplicationEntry entries = 3;
+}
+
+// Single replication entry
+message ReplicationEntry {
+  enum Operation {
+    SET = 0;
+    DELETE = 1;
+  }
+  Operation op = 1;
+  string key = 2;
+  bytes value = 3;
+  int32 ttl_seconds = 4;
+  int64 version = 5;
+}
+
+// Replication acknowledgment
+message ReplicationAck {
+  bool success = 1;
+  int64 last_applied_timestamp = 2;
+  string error = 3;
+}
+
+// Sync metadata
+message SyncMetadata {
+  string requesting_node_id = 1;
+  repeated string keys_to_sync = 2;
+}
+
+// Key-value pair for sync streaming
+message KeyValuePair {
+  string key = 1;
+  bytes value = 2;
+  int32 ttl_seconds = 3;
+  int64 version = 4;
+  int64 created_at = 5;
+}

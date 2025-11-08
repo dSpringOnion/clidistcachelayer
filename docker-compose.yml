@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  # Coordinator node - manages cluster membership and routing
+  coordinator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.coordinator
+    container_name: distcache-coordinator
+    hostname: coordinator
+    ports:
+      - "50100:50100"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.10
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      - coordinator_data:/data
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50100"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Cache Node 1
+  cache-node1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: distcache-node1
+    hostname: cache-node1
+    ports:
+      - "50051:50051"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.11
+    environment:
+      - NODE_ID=node1
+      - NODE_ADDRESS=cache-node1:50051
+      - COORDINATOR_ADDRESS=coordinator:50100
+      - LOG_LEVEL=info
+      - REPLICATION_FACTOR=3
+      - MEMORY_LIMIT_MB=512
+    volumes:
+      - node1_data:/data
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Cache Node 2
+  cache-node2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: distcache-node2
+    hostname: cache-node2
+    ports:
+      - "50052:50051"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.12
+    environment:
+      - NODE_ID=node2
+      - NODE_ADDRESS=cache-node2:50051
+      - COORDINATOR_ADDRESS=coordinator:50100
+      - LOG_LEVEL=info
+      - REPLICATION_FACTOR=3
+      - MEMORY_LIMIT_MB=512
+    volumes:
+      - node2_data:/data
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Cache Node 3
+  cache-node3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: distcache-node3
+    hostname: cache-node3
+    ports:
+      - "50053:50051"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.13
+    environment:
+      - NODE_ID=node3
+      - NODE_ADDRESS=cache-node3:50051
+      - COORDINATOR_ADDRESS=coordinator:50100
+      - LOG_LEVEL=info
+      - REPLICATION_FACTOR=3
+      - MEMORY_LIMIT_MB=512
+    volumes:
+      - node3_data:/data
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Cache Node 4
+  cache-node4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: distcache-node4
+    hostname: cache-node4
+    ports:
+      - "50054:50051"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.14
+    environment:
+      - NODE_ID=node4
+      - NODE_ADDRESS=cache-node4:50051
+      - COORDINATOR_ADDRESS=coordinator:50100
+      - LOG_LEVEL=info
+      - REPLICATION_FACTOR=3
+      - MEMORY_LIMIT_MB=512
+    volumes:
+      - node4_data:/data
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Cache Node 5
+  cache-node5:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: distcache-node5
+    hostname: cache-node5
+    ports:
+      - "50055:50051"
+    networks:
+      distcache_net:
+        ipv4_address: 172.20.0.15
+    environment:
+      - NODE_ID=node5
+      - NODE_ADDRESS=cache-node5:50051
+      - COORDINATOR_ADDRESS=coordinator:50100
+      - LOG_LEVEL=info
+      - REPLICATION_FACTOR=3
+      - MEMORY_LIMIT_MB=512
+    volumes:
+      - node5_data:/data
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: ["CMD", "timeout", "2", "bash", "-c", "</dev/tcp/localhost/50051"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  distcache_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  coordinator_data:
+  node1_data:
+  node2_data:
+  node3_data:
+  node4_data:
+  node5_data:

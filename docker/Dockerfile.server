@@ -1,0 +1,65 @@
+# Multi-stage build for DistCacheLayer Server
+FROM debian:bookworm-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    libssl-dev \
+    zlib1g-dev \
+    libspdlog-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install gRPC and protobuf
+RUN apt-get update && apt-get install -y \
+    libgrpc++-dev \
+    libprotobuf-dev \
+    protobuf-compiler-grpc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /build
+
+# Copy source code
+COPY . .
+
+# Build the project
+RUN mkdir -p build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make distcache_server -j$(nproc)
+
+# Final stage - minimal runtime image
+FROM debian:bookworm-slim
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    libgrpc++1.51 \
+    libprotobuf32 \
+    libspdlog1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd -m -u 1000 -s /bin/bash cachenode
+
+# Create data directory
+RUN mkdir -p /data && chown cachenode:cachenode /data
+
+# Copy binary from builder
+COPY --from=builder /build/build/bin/distcache_server /usr/local/bin/distcache_server
+
+# Switch to non-root user
+USER cachenode
+WORKDIR /data
+
+# Expose gRPC port
+EXPOSE 50051
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD timeout 2 bash -c "</dev/tcp/localhost/50051" || exit 1
+
+# Run cache server
+ENTRYPOINT ["/usr/local/bin/distcache_server"]
+CMD ["--port", "50051", "--log-level", "info"]

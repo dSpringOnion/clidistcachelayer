@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package distcache.v1;
+
+// Coordinator service for cluster management
+service CoordinatorService {
+  // Node registration
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+
+  // Node heartbeat
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Get current hash ring topology
+  rpc GetRing(GetRingRequest) returns (GetRingResponse);
+
+  // Get all nodes
+  rpc GetNodes(GetNodesRequest) returns (GetNodesResponse);
+
+  // Admin: Add node to cluster
+  rpc AddNode(AddNodeRequest) returns (AddNodeResponse);
+
+  // Admin: Remove node from cluster
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
+
+  // Get cluster status
+  rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusResponse);
+}
+
+// Node information
+message NodeInfo {
+  string id = 1;
+  string address = 2;
+  string status = 3;  // HEALTHY, UNHEALTHY, DEAD
+  int64 last_heartbeat = 4;
+  map<string, string> metadata = 5;
+}
+
+// Register node
+message RegisterNodeRequest {
+  string node_id = 1;
+  string address = 2;
+  map<string, string> metadata = 3;
+}
+
+message RegisterNodeResponse {
+  bool success = 1;
+  string error = 2;
+  int64 ring_version = 3;
+}
+
+// Heartbeat
+message HeartbeatRequest {
+  string node_id = 1;
+  map<string, string> stats = 2;  // Optional node stats
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  int64 ring_version = 2;
+  bool ring_changed = 3;  // Indicates if ring topology changed
+}
+
+// Get ring
+message GetRingRequest {
+  int64 current_version = 1;  // Client's current version
+}
+
+message GetRingResponse {
+  int64 version = 1;
+  repeated NodeInfo nodes = 2;
+  int32 replication_factor = 3;
+  int32 virtual_nodes_per_node = 4;
+  bool changed = 5;  // True if version changed
+}
+
+// Get nodes
+message GetNodesRequest {
+}
+
+message GetNodesResponse {
+  repeated NodeInfo nodes = 1;
+}
+
+// Add node
+message AddNodeRequest {
+  string node_id = 1;
+  string address = 2;
+  map<string, string> metadata = 3;
+}
+
+message AddNodeResponse {
+  bool success = 1;
+  string error = 2;
+  int64 new_ring_version = 3;
+}
+
+// Remove node
+message RemoveNodeRequest {
+  string node_id = 1;
+}
+
+message RemoveNodeResponse {
+  bool success = 1;
+  string error = 2;
+  int64 new_ring_version = 3;
+}
+
+// Cluster status
+message GetClusterStatusRequest {
+}
+
+message GetClusterStatusResponse {
+  int32 total_nodes = 1;
+  int32 healthy_nodes = 2;
+  int32 unhealthy_nodes = 3;
+  int32 dead_nodes = 4;
+  int64 ring_version = 5;
+  repeated NodeInfo nodes = 6;
+}

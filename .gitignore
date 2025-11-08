@@ -1,0 +1,97 @@
+# Build directories
+build/
+cmake-build-*/
+bin/
+lib/
+
+# Generated files
+generated/
+*.pb.cc
+*.pb.h
+*.grpc.pb.cc
+*.grpc.pb.h
+
+# Compiled Object files
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+distcache_server
+distcache_cli
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+test_results/
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Logs
+*.log
+logs/
+
+# Data files
+data/
+snapshots/
+*.db
+*.snapshot
+
+# Credentials and secrets
+*.pem
+*.key
+*.crt
+secrets/
+.env
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# Profiling
+*.prof
+perf.data*
+*.svg
+flamegraph.svg
+
+# Package manager
+vcpkg_installed/
+conan/
+_deps/
+
+# AI/LLM files - excluded for security, not to hide AI usage
+.claude/
+.cursor/
+.aider*
+.github/copilot/
+*.prompt.md
+ai_context/
